@@ -443,13 +443,14 @@ async function addOne(file,t){
  let matches=scored.filter(x=>x.s>=.9).map(x=>x.p).slice(0,6),aiName="",aiNote="";
  const ai=getAI();
  if(ai.key&&navigator.onLine!==false){t.textContent="🤖 AI tekshirmoqda…";
-  try{// boshqa burchakdan olingan surat piksellar bo'yicha o'xshamaydi, shuning uchun AI'ga shu bo'limdagi
+  for(;;)try{// boshqa burchakdan olingan surat piksellar bo'yicha o'xshamaydi, shuning uchun AI'ga shu bo'limdagi
    // barcha (oxirgi 14 ta) mahsulot + butun bazadan eng o'xshash 6 tasi yuboriladi
    const same=scored.filter(x=>x.p.sec===cur).slice(0,14).map(x=>x.p),other=scored.filter(x=>x.p.sec!==cur).slice(0,6).map(x=>x.p);
    const cands=[...new Set([...scored.filter(x=>x.s>=.9).map(x=>x.p),...same,...other])].slice(0,20);const r=await aiCheck(img,cands,ai);
    // mahalliy topilganlar o'chirilmaydi — AI faqat qo'shimcha topadi
-   matches=[...new Set([...matches,...r.same.map(i=>cands[i-1]).filter(Boolean)])].slice(0,6);aiName=r.name||"";}
-  catch(e){aiNote="⚠️ AI ishlamadi: "+(e.message||e)+". Faqat aynan bir xil suratlar tekshirildi.";}}
+   matches=[...new Set([...matches,...r.same.map(i=>cands[i-1]).filter(Boolean)])].slice(0,6);aiName=r.name||"";break;}
+  catch(e){if(confirm("⚠️ AI hozir javob bermadi:\n"+(e.message||e)+"\n\nQayta urinib ko‘raymi?\n(“Cancel” — AI'siz davom etish)")){t.textContent="🤖 AI qayta tekshirmoqda…";continue;}
+   aiNote="⚠️ AI tekshirmadi. Faqat aynan bir xil suratlar tekshirildi.";break;}}
  else if(!ai.key&&!sessionStorage.getItem("bm-noai")){sessionStorage.setItem("bm-noai","1");
   aiNote="🤖 AI ulanmagan. Kalitsiz faqat aynan bir xil surat taniladi; mahsulotni qayta suratga olsangiz, takrorni AI'siz aniqlab bo‘lmaydi. Sozlamalar → Gemini kalitini kiriting.";}
  if(matches.length){const ch=await dupDialog(img,matches,aiNote);
@@ -474,7 +475,8 @@ function dupDialog(img,matches,note){return new Promise(res=>{
 });}
 
 /* ===== Gemini AI ===== */
-const DEFAULT_MODEL="gemini-flash-latest",FALLBACK_MODELS=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-2.5-flash"];
+const DEFAULT_MODEL="gemini-flash-latest",FALLBACK_MODELS=["gemini-flash-latest","gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-3.1-flash-lite","gemini-2.5-flash"];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function getAI(){return{key:LS.get("bm-gkey",""),model:LS.get("bm-gmodel","")||DEFAULT_MODEL,autoName:LS.get("bm-autoname","1")==="1"};}
 function loadAI(){const a=getAI();$("#apiKey").value=a.key;$("#aiModel").value=LS.get("bm-gmodel","");$("#aiName").checked=a.autoName;}
 function saveAI(){LS.set("bm-gkey",$("#apiKey").value.trim());LS.set("bm-gmodel",$("#aiModel").value.trim());LS.set("bm-autoname",$("#aiName").checked?"1":"0");toast("Saqlandi");}
@@ -489,7 +491,8 @@ async function gemini(parts,ai){
    if(model!==ai.model&&!LS.get("bm-gmodel",""))LS.set("bm-gmodel-auto",model);
    return JSON.parse(txt.replace(/^```(json)?|```$/g,"").trim());}
   lastErr=new Error(j.error?.message?.slice(0,140)||("HTTP "+r.status));
-  if(r.status!==404&&r.status!==400)break; // kalit/limit xatosi — boshqa modelni sinash foydasiz
+  if(r.status===401||r.status===403)break; // kalit noto'g'ri — boshqa modelni sinash foydasiz
+  if(r.status===503||r.status===429||r.status>=500)await sleep(800); // band — biroz kutib, keyingi modelni sinaymiz
  }
  throw lastErr;
 }
