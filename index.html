@@ -148,7 +148,7 @@ label.sw input{width:20px;height:20px}
 </div>
 
 <div class="panel">
- <h3>🤖 AI tekshiruvi (Gemini)</h3>
+ <h3>🤖 AI tekshiruvi (Gemini) <span class="small" style="font-weight:400">· v3.3</span></h3>
  <div class="small">Yangi surat qo‘shilganda AI uni bazadagi o‘xshash mahsulotlar bilan solishtiradi va takror bo‘lsa ogohlantiradi. Kalitsiz faqat aynan bir xil suratni taniydi — qayta olingan suratni tanish uchun kalit kerak.</div>
  <p style="margin:12px 0 6px;font-weight:600">Gemini API kaliti</p>
  <div class="row"><input type="password" id="apiKey" placeholder="AIza..." autocomplete="off" style="flex:3"><button class="grey" style="flex:1" onclick="apiKey.type=apiKey.type==='password'?'text':'password'">👁</button></div>
@@ -448,7 +448,10 @@ async function addOne(file,t){
    const same=scored.filter(x=>x.p.sec===cur).slice(0,14).map(x=>x.p),other=scored.filter(x=>x.p.sec!==cur).slice(0,6).map(x=>x.p);
    const cands=[...new Set([...scored.filter(x=>x.s>=.9).map(x=>x.p),...same,...other])].slice(0,20);const r=await aiCheck(img,cands,ai);
    // mahalliy topilganlar o'chirilmaydi — AI faqat qo'shimcha topadi
-   matches=[...new Set([...matches,...r.same.map(i=>cands[i-1]).filter(Boolean)])].slice(0,6);aiName=r.name||"";break;}
+   const best=r.best?cands[r.best-1]:null,aiHit=[...r.same.map(i=>cands[i-1]).filter(Boolean),...(best&&r.score>=55?[best]:[])];
+   matches=[...new Set([...aiHit,...matches])].slice(0,6);aiName=r.name||"";
+   if(aiHit.length)aiNote="🤖 AI: "+(r.score?r.score+"% ehtimol bilan ":"")+"bu mahsulot avval qo‘shilgan.";
+   else if(!matches.length)toast("🤖 AI "+cands.length+" ta surat bilan solishtirdi — takror yo‘q"+(r.score?" (eng yaqini "+r.score+"%)":""),3000);break;}
   catch(e){if(confirm("⚠️ AI hozir javob bermadi:\n"+(e.message||e)+"\n\nQayta urinib ko‘raymi?\n(“Cancel” — AI'siz davom etish)")){t.textContent="🤖 AI qayta tekshirmoqda…";continue;}
    aiNote="⚠️ AI tekshirmadi. Faqat aynan bir xil suratlar tekshirildi.";break;}}
  else if(!ai.key&&!sessionStorage.getItem("bm-noai")){sessionStorage.setItem("bm-noai","1");
@@ -500,12 +503,14 @@ const b64=d=>d.slice(d.indexOf(",")+1);
 async function aiCheck(img,cands,ai){
  const small=await shrink(img,512,.8);
  const parts=[{text:"You help a small shop (stationery, toys, cosmetics, accessories, household goods) keep a photo catalog without duplicates.\nImage 0 is a NEW product photo. "+(cands.length?"Images 1.."+cands.length+" are EXISTING catalog products.\nDecide which existing images show the SAME sellable product as image 0 (same item, same model/design/print, same color). Identical or near-identical photos (even re-compressed or slightly cropped) are ALWAYS the same product. The same item photographed again from a slightly different angle, distance or framing is the SAME product. Ignore background, angle, lighting and packaging position. A different color, size, print or design counts as a DIFFERENT product. If unsure, do not include it.\n":"There are no existing images to compare.\n")+
-  "Also give a short product name for image 0 in Uzbek (Latin script), 1-4 words, e.g. \"Ko‘k sharikli ruchka\".\nReply only JSON: {\"same\":[indices of matching existing images],\"name\":\"...\"}"},
+  "Also give a short product name for image 0 in Uzbek (Latin script), 1-4 words, e.g. \"Ko‘k sharikli ruchka\".\nAlso give \"best\": the index of the existing image most likely showing the same product as image 0 (0 if none), and \"score\": 0-100, how likely that best image shows the very same product.\nReply only JSON: {\"same\":[indices of matching existing images],\"best\":0,\"score\":0,\"name\":\"...\"}"},
   {text:"Image 0:"},{inline_data:{mime_type:"image/jpeg",data:b64(small)}}];
  cands.forEach((p,i)=>parts.push({text:"Image "+(i+1)+":"},{inline_data:{mime_type:"image/jpeg",data:b64(p.thumb)}}));
  const ai2=LS.get("bm-gmodel","")?ai:{...ai,model:LS.get("bm-gmodel-auto","")||ai.model};
  const r=await gemini(parts,ai2);
- return{same:Array.isArray(r.same)?r.same.map(Number).filter(n=>n>=1&&n<=cands.length):[],name:typeof r.name==="string"?r.name.trim().slice(0,60):""};
+ const num=x=>parseInt(String(x).replace(/[^0-9]/g,""),10),ok=n=>n>=1&&n<=cands.length;
+ const best=num(r.best),score=Math.max(0,Math.min(100,num(r.score)||0));
+ return{same:Array.isArray(r.same)?r.same.map(num).filter(ok):[],best:ok(best)?best:0,score:ok(best)?score:0,name:typeof r.name==="string"?r.name.trim().slice(0,60):""};
 }
 async function testAI(){saveAI();const a=getAI();if(!a.key){$("#aiStatus").textContent="Avval kalitni kiriting.";return;}
  $("#aiStatus").textContent="Tekshirilmoqda…";
